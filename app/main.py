@@ -47,8 +47,8 @@ def begin_registry():
     identity = request.json['identity']
 
     # Ensure address doesn't already have an identity associated.
-    identity = session.query(Identity).filter_by(address=address).first()
-    if identity is not None:
+    existing_identity = session.query(Identity).filter_by(address=address).first()
+    if existing_identity is not None:
         abort(400)
 
     identity = Identity(address=address, identity=identity)
