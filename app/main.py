@@ -1,10 +1,7 @@
-from flask import Flask, abort, request
-import secrets
-from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Boolean, select
+from flask import Flask, abort, request, jsonify
+from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from ethereum.utils import ecrecover_to_pub, sha3
-from eth_utils.hexidecimal import encode_hex, decode_hex, add_0x_prefix
 
 app = Flask(__name__)
 
@@ -22,72 +19,41 @@ class Identity(Base):
     id = Column(Integer, primary_key=True)
     address = Column(String)
     identity = Column(String)
-    confirmed = Column(Boolean)
-    challenge = Column(String)
 
+# Call from python3 shell to initialise db.
 def create_all():
     Base.metadata.create_all(engine)
 
-@app.route("/")
-def root():
-    return "GET /reveal/&lt;address&gt; to return the identity string of an address, or 404 if address is unknown.<br> \
-            POST /register to begin the process of creating a registration. A challenge will be issued.<br> \
-            address: &lt;address&gt; <br>\
-            identity: &lt;identity&gt; <br>\
-            POST /confirm to submit a signed challenge, the final step of registration.\
-            address: &lt;address&gt; <br> \
-            challenge: &lt;challenge&gt; <br> \
-            message_hash: &lt;message_hash&gt; <br> \
-            signature: &lt;signature&gt;"
-
-@app.route("/reveal/<address>")
+# Retreive an identity from an address.
+@app.route("/<address>")
 def get_identity(address):
-    identity = session.query(identities).filter_by(address=address).filter_by(confirmed=True).first()
+    identity = session.query(Identity).filter_by(address=address).first()
     if not identity:
         abort(404)
-    return identity.identity
+    return jsonify({
+        'address': identity.address,
+        'identity': identity.identity
+    })
 
-@app.route("/register", methods=['POST'])
+# Register an identity to be associated with an address.
+@app.route("/", methods=['POST'])
 def begin_registry():
-    if 'address' not in request.form or 'identity' not in request.form:
+    if 'address' not in request.json or 'identity' not in request.json:
         abort(400)
 
-    address = request.form['address']
-    identity = request.form['identity']
+    address = request.json['address']
+    identity = request.json['identity']
 
-    challenge = secrets.token_hex(30)
+    # Ensure address doesn't already have an identity associated.
+    identity = session.query(Identity).filter_by(address=address).first()
+    if identity is not None:
+        abort(400)
 
-    identity = Identity(address=address, identity=identity, confirmed=False, challenge=challenge)
+    identity = Identity(address=address, identity=identity)
     session.add(identity)
     session.commit()
 
-    return challenge
-
-@app.route("/confirm", methods=['POST'])
-def confirm_identity():
-    required = ['address', 'challenge', 'message_hash', 'signature']
-    for field in required:
-        if field not in request.form:
-            abort(400)
-
-    address = request.form['address']
-    challenge = request.form['challenge']
-    message_hash = request.form['message_hash']
-    signature = request.form['signature']
-
-    r = int(signature[0:66], 16)
-    s = int(add_0x_prefix(signature[66:130]), 16)
-    v = int(add_0x_prefix(signature[130:132]), 16)
-    if v not in (27, 28):
-        v += 27
-
-    pubkey = ecrecover_to_pub(decode_hex(message_hash), v, r, s)
-    if encode_hex(sha3(pubkey)[-20:]) == address:
-        identity = session.query(identities).filter_by(address=address).filter_by(challenge=challenge).filter_by(confirmed=False).first()
-        identity.confirmed = True
-        session.commit()
-    else:
-        abort(403)
+    return 'OK'
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run()
