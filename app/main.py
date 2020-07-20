@@ -1,9 +1,11 @@
 from flask import Flask, abort, request, jsonify
+from flask_cors import CORS
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 app = Flask(__name__)
+CORS(app)
 
 db_uri = "sqlite:///identity.sqlite"
 engine = create_engine(db_uri)
