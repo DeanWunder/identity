@@ -37,6 +37,17 @@ def get_identity(address):
         'identity': identity.identity
     })
 
+# Retreive information about all identities on storage. For oracle.
+@app.route("/all")
+def get_all_identities():
+    identities = session.query(Identity).all()
+    if not identities:
+        abort(404)
+    return jsonify([{
+        'address': identity.address,
+        'identity': identity.identity
+    } for identity in identities])
+
 # Register an identity to be associated with an address.
 @app.route("/", methods=['POST'])
 def begin_registry():
